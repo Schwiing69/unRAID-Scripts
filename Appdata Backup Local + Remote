@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#################################################################
+#---------------------SET ALL VARIABLES-------------------------#
+#################################################################
+
+appdataDirectory='/mnt/thunder/docker/appdata/'
+backupDirectory='/mnt/lightning/backup/appdata/'
+remoteDirectory='/mnt/disks/ganymede-ssh-secure/appdata/'
+dayslocal=1
+daysremote=30
+
+#################################################################
+#---------------------PRUNE OLD LOCAL BACKUPS-------------------#
+#################################################################
+
+find "$backupDirectory"* -exec rm -rf {} +
+#find "$backupDirectory"* -type d -mtime +"$dayslocal" -exec rm -rf {} + #ENABLE IF TIME BASED REQUIRED
+
+#################################################################
+#---------------------PERFORM NEW LOCAL BACKUP------------------#
+#################################################################
+
+now="$(date +"%Y-%m-%d"@%H.%M)" 
+mkdir """$backupDirectory"""$now""
+
+for path in "$appdataDirectory"*
+
+do
+    name="$(basename "$path")"
+    path=""$appdataDirectory""$name""
+ 
+    cRunning="$(docker ps -a --format '{{.Names}}' -f status=running)"
+
+    if echo $cRunning | grep -iqF $name; then
+    echo "Stopping $name"
+        docker stop -t 60 "$name"
+        cd ""$backupDirectory""$now""
+        tar cWfC "./$name.tar" "$(dirname "$path")" "$(basename "$path")"
+    echo "Starting $name"
+        docker start "$name"
+    else
+        cd ""$backupDirectory""$now""
+
+        tar cWfC "./$name.tar" "$(dirname "$path")" "$(basename "$path")"
+    echo "$name was stopped before backup, ignoring startup"
+    fi
+
+done
+
+#################################################################
+#---------------------COPY TO REMOTE----------------------------#
+#################################################################
+
+  rclone copy -v \
+  --fast-list \
+  --tpslimit=10 \
+  --checkers=4 \
+  --transfers=2 \
+  ""$backupDirectory""/ ganymede-ssh-secure:appdata
+
+#################################################################
+#---------------------DELETE OLD REMOTE BACKUPS-----------------#
+#################################################################
+
+find "$remoteDirectory"* -type d -mtime +"$daysremote" -exec rm -rf {} +
+
+#################################################################
+#---------------------------------END---------------------------#
+#################################################################

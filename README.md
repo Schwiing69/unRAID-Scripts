@@ -5,3 +5,5 @@
 ## Personal Files <br>
 ## PFsense <br>
 ## Paperless
+
+### This also assumes you already have rclone setup
